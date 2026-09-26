@@ -1,3 +1,16 @@
+Release Notes - Slackbot - Version 1.0.5
+--------------------------------------------
+This release contains the following new features:
+
+  * Migrated from the deprecated Slack RTM API to Socket Mode + Events API,
+    via `slack_bolt` (bots now require an `APP_TOKEN` in addition to
+    `API_TOKEN`, see README).
+
+This release contains the following fixes:
+
+  * Allow newer versions of `websocket-client`.
+
+
 Release Notes - Slackbot - Version 1.0.1 - 1.0.4
 --------------------------------------------
 This release contains the following fixes:

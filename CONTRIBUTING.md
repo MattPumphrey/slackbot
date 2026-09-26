@@ -45,18 +45,12 @@ $ git push origin develop
 
 See git documentation for info on merging, rebasing, and squashing commits.
 
-### virtualenv/pyvenv
+### virtualenv
 
-A virtualenv allows you to install the Python packages you need to develop and run slackbot without adding a bunch of unneeded junk to your system's Python installation. Once you create the virtualenv, you need to activate it any time you're developing or running slackbot. The steps are slightly different for Python 2 and Python 3. For Python 2, run:
-
-```
-$ virtualenv --no-site-packages .env
-```
-
-For Python 3, run:
+A virtualenv allows you to install the Python packages you need to develop and run slackbot without adding a bunch of unneeded junk to your system's Python installation (Python 3.8+ is required). Create one with:
 
 ```
-$ pyvenv .env
+$ python3 -m venv .env
 ```
 
 Now that the virtualenv has been created, activate it and install the packages needed for development:
@@ -72,10 +66,13 @@ At this point, you should be able to run slackbot as described in the README.
 
 In order to run tests, you will need a slack instance. Create a free one at http://slack.com. Do not use an existing Slack for tests. The tests produce quite a bit of chat, and depending on how you set up Travis, it's possible for your API tokens to get leaked. Don't risk it. Use a slack created just for development and test.
 
+The test bot connects over Socket Mode (see the [README](README.md#create-and-configure-a-slack-app) for how to set up a Slack app), so you'll need both a bot token and an app-level token for it.
+
 Create a file named `slackbot_test_settings.py` and add the following settings:
 
 ```
 testbot_apitoken = 'xoxb-token'
+testbot_apptoken = 'xapp-token'
 testbot_username = 'testbot'
 driver_apitoken = 'xoxp-token'
 driver_username = 'your username'
@@ -83,7 +80,7 @@ test_channel = 'testchannel'
 test_private_channel = 'testprivatechannel'
 ```
 
-**Important note:** The bot token can be obtained by adding a custom bot integration in Slack. User tokens can be obtained at https://api.slack.com/docs/oauth-test-tokens. Slack tokens are like passwords! Don't commit them. If you're using them in some kind of Github or Travis automation, ensure they are for Slacks that are only for testing.
+**Important note:** The bot token can be obtained by adding a custom bot integration in Slack, and the app-level token from "Basic Information → App-Level Tokens" with the `connections:write` scope. User tokens can be obtained at https://api.slack.com/docs/oauth-test-tokens. Slack tokens are like passwords! Don't commit them. If you're using them in some kind of Github or Travis automation, ensure they are for Slacks that are only for testing.
 
 At this point, you should be able to run tests:
 
@@ -93,13 +90,14 @@ $ py.test
 
 If you're signed into slack, you'll see your user account and bot account chatting with each other as the tests run.
 
-Tox is also available. If your system has Python 2.7, 3.4, and 3.5 installed, installing and running tox will automatically manage the virtual Python environments and dependencies for you.
+Tox is also available. If your system has Python 3.8-3.12 installed, installing and running tox will automatically manage the virtual Python environments and dependencies for you.
 
 ### Configure Travis
 
 Log in to Travis and enable tests for your slackbot fork. Open Travis settings. You must add the following environment variables, which should correlate to settings in `slackbot_test_settings.py`:
 
 - SLACKBOT_TESTBOT_APITOKEN
+- SLACKBOT_TESTBOT_APPTOKEN
 - SLACKBOT_TESTBOT_USERNAME
 - SLACKBOT_DRIVER_APITOKEN
 - SLACKBOT_DRIVER_USERNAME
