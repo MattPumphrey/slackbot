@@ -31,10 +31,10 @@ class FakePluginManager:
 
 class FakeClient:
     def __init__(self):
-        self.rtm_messages = []
+        self.sent_messages = []
 
-    def rtm_send_message(self, channel, message, attachments=None):
-        self.rtm_messages.append((channel, message))
+    def send_message(self, channel, message, attachments=None, as_user=True, thread_ts=None):
+        self.sent_messages.append((channel, message))
 
 
 class FakeMessage:
@@ -45,7 +45,7 @@ class FakeMessage:
     def reply(self, message):
         # Perhaps a bit unnecessary to do it this way, but it's close to how
         # dispatcher and message actually works
-        self._client.rtm_send_message(self._msg['channel'], message)
+        self._client.send_message(self._msg['channel'], message)
 
 
 @pytest.fixture()
@@ -162,15 +162,15 @@ def test_dispatch_msg(dispatcher, monkeypatch):
     monkeypatch.setattr('slackbot.dispatcher.Message', FakeMessage)
     dispatcher.dispatch_msg(
         ['reply_to', {'text': 'okay', 'channel': FAKE_CHANNEL}])
-    assert dispatcher._client.rtm_messages == [(FAKE_CHANNEL, 'okay')]
+    assert dispatcher._client.sent_messages == [(FAKE_CHANNEL, 'okay')]
 
 
 def test_dispatch_msg_exception(dispatcher, monkeypatch):
     monkeypatch.setattr('slackbot.dispatcher.Message', FakeMessage)
     dispatcher.dispatch_msg(
         ['reply_to', {'text': 'raising', 'channel': FAKE_CHANNEL}])
-    assert len(dispatcher._client.rtm_messages) == 1
-    error = dispatcher._client.rtm_messages[0]
+    assert len(dispatcher._client.sent_messages) == 1
+    error = dispatcher._client.sent_messages[0]
     assert error[0] == FAKE_CHANNEL
     assert 'RuntimeError' in error[1]
 
@@ -180,10 +180,10 @@ def test_dispatch_msg_errors_to(dispatcher, monkeypatch):
     dispatcher._errors_to = 'D12345'
     dispatcher.dispatch_msg(
         ['reply_to', {'text': 'raising', 'channel': FAKE_CHANNEL}])
-    assert len(dispatcher._client.rtm_messages) == 2
-    user_error = dispatcher._client.rtm_messages[0]
+    assert len(dispatcher._client.sent_messages) == 2
+    user_error = dispatcher._client.sent_messages[0]
     assert user_error[0] == FAKE_CHANNEL
-    error = dispatcher._client.rtm_messages[1]
+    error = dispatcher._client.sent_messages[1]
     assert error[0] == 'D12345'
     assert 'RuntimeError' in error[1]
 
@@ -192,14 +192,14 @@ def test_dispatch_default_msg(dispatcher, monkeypatch):
      monkeypatch.setattr('slackbot.dispatcher.Message', FakeMessage)
      dispatcher.dispatch_msg(
          ['respond_to', {'text': 'no_plugin_defined', 'channel': FAKE_CHANNEL}])
-     assert dispatcher._client.rtm_messages == [(FAKE_CHANNEL, 'sorry')]
+     assert dispatcher._client.sent_messages == [(FAKE_CHANNEL, 'sorry')]
 
 
 def test_dispatch_default_msg_plugin(dispatcher, monkeypatch):
     monkeypatch.setattr('slackbot.dispatcher.Message', FakeMessage)
     dispatcher.dispatch_msg(
         ['respond_to', {'text': 'default_okay', 'channel': FAKE_CHANNEL}])
-    assert dispatcher._client.rtm_messages == [(FAKE_CHANNEL, 'default_okay')]
+    assert dispatcher._client.sent_messages == [(FAKE_CHANNEL, 'default_okay')]
 
 
 def test_none_text(dispatcher):

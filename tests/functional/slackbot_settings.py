@@ -6,6 +6,7 @@ ALIASES = ",".join(["!", "$"])
 def load_driver_settings():
     KEYS = (
         'testbot_apitoken',
+        'testbot_apptoken',
         'testbot_username',
         'driver_apitoken',
         'driver_username',

@@ -1,5 +1,4 @@
 requests>=2.4.0
-websocket-client>=0.22.0,<=0.44.0
-slacker>=0.9.50
-six>=1.10.0
+slack_bolt>=1.18.0
+slack_sdk>=3.27.0
 pytest>=2.9.1

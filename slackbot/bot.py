@@ -1,12 +1,10 @@
 # -*- coding: utf-8 -*-
-from __future__ import absolute_import
-import imp
-import importlib
 import logging
 import re
-import time
-from glob import glob
-from six.moves import _thread
+
+from slack_bolt import App
+from slack_bolt.adapter.socket_mode import SocketModeHandler
+
 from slackbot import settings
 from slackbot.manager import PluginsManager
 from slackbot.slackclient import SlackClient
@@ -29,22 +27,42 @@ class Bot(object):
         self._plugins = PluginsManager()
         self._dispatcher = MessageDispatcher(self._client, self._plugins,
                                              settings.ERRORS_TO)
+        self._app = App(token=settings.API_TOKEN)
+        self._register_listeners()
+
+    def _register_listeners(self):
+        @self._app.event('message')
+        def _handle_message(event):
+            self._dispatcher.on_message_event(event)
+
+        def _handle_channel_event(event):
+            channel = event.get('channel')
+            if channel:
+                self._dispatcher.on_channel_event(channel)
+
+        for event_type in ('channel_created', 'channel_rename',
+                           'group_joined', 'group_rename', 'im_created'):
+            self._app.event(event_type)(_handle_channel_event)
+
+        def _handle_user_event(event):
+            user = event.get('user')
+            if user:
+                self._dispatcher.on_user_event(user)
+
+        for event_type in ('team_join', 'user_change'):
+            self._app.event(event_type)(_handle_user_event)
 
     def run(self):
-        self._plugins.init_plugins()
-        self._dispatcher.start()
-        if not self._client.connected: 
-            self._client.rtm_connect()
-            
-        _thread.start_new_thread(self._keepactive, tuple())
-        logger.info('connected to slack RTM api')
-        self._dispatcher.loop()
+        if not getattr(settings, 'APP_TOKEN', None):
+            raise ValueError(
+                'settings.APP_TOKEN (or the SLACKBOT_APP_TOKEN env var) is '
+                'required to connect via Socket Mode. Enable Socket Mode '
+                'for your Slack app and generate an app-level token with '
+                'the connections:write scope.')
 
-    def _keepactive(self):
-        logger.info('keep active thread started')
-        while True:
-            time.sleep(30 * 60)
-            self._client.ping()
+        self._plugins.init_plugins()
+        logger.info('connecting to slack via socket mode')
+        SocketModeHandler(self._app, settings.APP_TOKEN).start()
 
 
 def respond_to(matchstr, flags=0):

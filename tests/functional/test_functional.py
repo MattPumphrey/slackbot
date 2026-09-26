@@ -11,27 +11,18 @@ import subprocess
 import pytest
 from tests.functional.driver import Driver
 from tests.functional.slackbot_settings import (
-    testbot_apitoken, testbot_username,
+    testbot_apitoken, testbot_apptoken, testbot_username,
     driver_apitoken, driver_username, test_channel, test_private_channel
 )
-
-TRAVIS = 'TRAVIS' in os.environ
-
-def stop_proxy():
-    os.system('slackbot-test-ctl stopproxy')
-
-def start_proxy():
-    os.system('slackbot-test-ctl startproxy')
 
 def _start_bot_process():
     args = [
         'python',
         'tests/functional/run.py',
     ]
-    if TRAVIS:
-        args = ['slackbot-test-ctl', 'run'] + args
     env = dict(os.environ)
     env['SLACKBOT_API_TOKEN'] = testbot_apitoken
+    env['SLACKBOT_APP_TOKEN'] = testbot_apptoken
     env['SLACKBOT_TEST'] = 'true'
     env['PYTHONPATH'] = ':'.join(
         [join(dirname(abspath(__file__))), '../..', env.get('PYTHONPATH', '')])
@@ -196,16 +187,6 @@ def test_bot_reply_to_message_multiple_decorators(driver):
     driver.wait_for_bot_channel_message('hello!', tosender=False)
     driver.send_direct_message('hello_decorators')
     driver.wait_for_bot_direct_message('hello!')
-
-
-@pytest.mark.skipif(not TRAVIS, reason="only run reconnect tests on travis builds")
-def test_bot_reconnect(driver):
-    driver.wait_for_bot_online()
-    stop_proxy()
-    driver.wait_for_bot_offline()
-    start_proxy()
-    driver.wait_for_bot_online()
-    test_bot_respond_to_simple_message(driver)
 
 
 def test_bot_reply_with_unicode_message(driver):

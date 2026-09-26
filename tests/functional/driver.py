@@ -1,11 +1,7 @@
-import threading
-import json
 import re
 import time
-import slacker
-import websocket
-import six
-from six.moves import _thread, range
+
+from slack_sdk import WebClient
 
 
 class Driver(object):
@@ -13,7 +9,7 @@ class Driver(object):
     the tests code can concentrate on higher level logic.
     """
     def __init__(self, driver_apitoken, driver_username, testbot_username, channel, private_channel):
-        self.slacker = slacker.Slacker(driver_apitoken)
+        self.web_client = WebClient(token=driver_apitoken)
         self.driver_username = driver_username
         self.driver_userid = None
         self.test_channel = channel
@@ -28,13 +24,10 @@ class Driver(object):
         # private private_channel channel
         self.gm_chan = None
         self._start_ts = time.time()
-        self._websocket = None
-        self.events = []
-        self._events_lock = threading.Lock()
+        self._last_sent_ts = None
 
     def start(self):
-        self._rtm_connect()
-        # self._fetch_users()
+        self._connect()
         self._start_dm_channel()
         self._join_test_channel()
 
@@ -102,31 +95,28 @@ class Driver(object):
 
     def ensure_only_specificmessage_from_bot(self, match, wait=5, tosender=False):
         if tosender is True:
-            match = six.text_type(r'^\<@{}\>: {}$').format(self.driver_userid, match)
+            match = r'^\<@{}\>: {}$'.format(self.driver_userid, match)
         else:
             match = u'^{}$'.format(match)
 
         for _ in range(wait):
             time.sleep(1)
-            with self._events_lock:
-                for event in self.events:
-                    if self._is_bot_message(event) and re.match(match, event['text'], re.DOTALL) is None:
-                        raise AssertionError(
-                            u'expected to get message matching "{}", but got message "{}"'.format(match, event['text']))
+            for msg in self._bot_messages_since_start(self.cm_chan):
+                if re.match(match, msg['text'], re.DOTALL) is None:
+                    raise AssertionError(
+                        u'expected to get message matching "{}", but got message "{}"'.format(match, msg['text']))
 
     def ensure_no_channel_reply_from_bot(self, wait=5):
         for _ in range(wait):
             time.sleep(1)
-            with self._events_lock:
-                for event in self.events:
-                    if self._is_bot_message(event):
-                        raise AssertionError(
-                            'expected to get nothing, but got message "{}"'.format(event['text']))
+            for msg in self._bot_messages_since_start(self.cm_chan):
+                raise AssertionError(
+                    'expected to get nothing, but got message "{}"'.format(msg['text']))
 
     def wait_for_file_uploaded(self, name, maxwait=30):
         for _ in range(maxwait):
             time.sleep(1)
-            if self._has_uploaded_file_rtm(name):
+            if self._has_uploaded_file(name):
                 break
         else:
             raise AssertionError('expected to get file "{}", but got nothing'.format(name))
@@ -142,122 +132,94 @@ class Driver(object):
     def _send_message_to_bot(self, channel, msg):
         self.clear_events()
         self._start_ts = time.time()
-        self.slacker.chat.post_message(channel, msg, username=self.driver_username)
+        response = self.web_client.chat_postMessage(
+            channel=channel, text=msg, username=self.driver_username)
+        self._last_sent_ts = response['ts']
 
     def _wait_for_bot_message(self, channel, match, maxwait=60, tosender=True, thread=False):
         for _ in range(maxwait):
             time.sleep(1)
-            if self._has_got_message_rtm(channel, match, tosender, thread=thread):
+            if self._has_got_message(channel, match, tosender=tosender, thread=thread):
                 break
         else:
             raise AssertionError('expected to get message like "{}", but got nothing'.format(match))
 
-    def _has_got_message(self, channel, match, start=None, end=None):
-        if channel.startswith('C'):
-            match = six.text_type(r'\<@{}\>: {}').format(self.driver_userid, match)
+    def _channel_messages(self, channel, thread=False, start=None, end=None):
+        if thread:
+            if not self._last_sent_ts:
+                return []
+            response = self.web_client.conversations_replies(
+                channel=channel, ts=self._last_sent_ts)
+            return response.get('messages', [])
+
         oldest = start or self._start_ts
         latest = end or time.time()
-        response = self.slacker.conversations.history(channel=channel, oldest=oldest, latest=latest)
-        for msg in response.body['messages']:
-            if msg['type'] == 'message' and re.match(match, msg['text'], re.DOTALL):
+        response = self.web_client.conversations_history(
+            channel=channel, oldest=oldest, latest=latest)
+        return response.get('messages', [])
+
+    def _has_got_message(self, channel, match, tosender=True, thread=False, start=None, end=None):
+        if tosender is True:
+            match = r'\<@{}\>: {}'.format(self.driver_userid, match)
+        for msg in self._channel_messages(channel, thread=thread, start=start, end=end):
+            if msg.get('type') == 'message' and 'text' in msg and \
+                    re.match(match, msg['text'], re.DOTALL):
                 return True
         return False
 
-    def _has_got_message_rtm(self, channel, match, tosender=True, thread=False):
-        if tosender is True:
-            match = six.text_type(r'\<@{}\>: {}').format(self.driver_userid, match)
-        with self._events_lock:
-            for event in self.events:
-                if 'type' not in event or \
-                        (event['type'] == 'message' and 'text' not in event):
-                    print('Unusual event received: ' + repr(event))
-                if (not thread or (thread and event.get('thread_ts', False))) \
-                        and event['type'] == 'message' and re.match(match, event['text'], re.DOTALL):
-                    return True
-            return False
+    def _bot_messages_since_start(self, channel):
+        for msg in self._channel_messages(channel):
+            if self._is_bot_message(msg):
+                yield msg
 
     def _fetch_users(self):
-        response = self.slacker.users.list()
-        for user in response.body['members']:
+        response = self.web_client.users_list()
+        for user in response.get('members', []):
             self.users[user['name']] = user['id']
 
         self.testbot_userid = self.users[self.testbot_username]
         self.driver_userid = self.users[self.driver_username]
 
-    def _rtm_connect(self):
-        r = self.slacker.rtm.start().body
-        self.driver_username = r['self']['name']
-        self.driver_userid = r['self']['id']
-
-        self.users = {u['name']: u['id'] for u in r['users']}
-        self.testbot_userid = self.users[self.testbot_username]
-
-        self._websocket = websocket.create_connection(r['url'])
-        self._websocket.sock.setblocking(0)
-        _thread.start_new_thread(self._rtm_read_forever, tuple())
-
-    def _websocket_safe_read(self):
-        """Returns data if available, otherwise ''. Newlines indicate multiple messages """
-        data = ''
-        while True:
-            try:
-                data += '{0}\n'.format(self._websocket.recv())
-            except Exception:
-                return data.rstrip()
-
-    def _rtm_read_forever(self):
-        while True:
-            json_data = self._websocket_safe_read()
-            if json_data != '':
-                with self._events_lock:
-                    self.events.extend([json.loads(d) for d in json_data.split('\n')])
-            time.sleep(1)
+    def _connect(self):
+        r = self.web_client.auth_test()
+        self.driver_username = r['user']
+        self.driver_userid = r['user_id']
+        self._fetch_users()
 
     def _start_dm_channel(self):
         """Start a slack direct messages channel with the test bot"""
-        response = self.slacker.conversations.open(users=self.testbot_userid)
-        self.dm_chan = response.body['channel']['id']
+        response = self.web_client.conversations_open(users=self.testbot_userid)
+        self.dm_chan = response['channel']['id']
 
     def _is_testbot_online(self):
-        response = self.slacker.users.get_presence(self.testbot_userid)
-        return response.body['presence'] == self.slacker.presence.ACTIVE
+        response = self.web_client.users_getPresence(user=self.testbot_userid)
+        return response['presence'] == 'active'
 
     def _has_uploaded_file(self, name, start=None, end=None):
         ts_from = start or self._start_ts
         ts_to = end or time.time()
-        response = self.slacker.files.list(user=self.testbot_userid, ts_from=ts_from, ts_to=ts_to)
-        for f in response.body['files']:
+        response = self.web_client.files_list(
+            user=self.testbot_userid, ts_from=ts_from, ts_to=ts_to)
+        for f in response.get('files', []):
             if f['name'] == name:
                 return True
         return False
 
-    def _has_uploaded_file_rtm(self, name):
-        with self._events_lock:
-            for event in self.events:
-                if event['type'] == 'message' \
-                   and 'files' in event \
-                   and event['files'][0]['name'] == name \
-                   and event['files'][0]['user'] == self.testbot_userid:
-                    return True
-            return False
-
     def _has_reacted(self, emojiname):
-        with self._events_lock:
-            for event in self.events:
-                if event['type'] == 'reaction_added' \
-                   and event['user'] == self.testbot_userid \
-                   and (event.get('reaction', '') == emojiname \
-                        or event.get('name', '') == emojiname):
+        for msg in self._channel_messages(self.cm_chan):
+            reactions = msg.get('reactions', [])
+            for reaction in reactions:
+                if reaction['name'] == emojiname and self.testbot_userid in reaction.get('users', []):
                     return True
-            return False
+        return False
 
     def _join_test_channel(self):
-        response = self.slacker.channels.join(self.test_channel)
-        self.cm_chan = response.body['channel']['id']
+        response = self.web_client.conversations_join(channel=self.test_channel)
+        self.cm_chan = response['channel']['id']
         self._invite_testbot_to_channel()
 
-        # Slacker/Slack API's still references to private_channels as 'groups'
-        private_channels = self.slacker.groups.list(self.test_private_channel).body['groups']
+        private_channels = self.web_client.conversations_list(
+            types='private_channel').get('channels', [])
         for private_channel in private_channels:
             if self.test_private_channel == private_channel['name']:
                 self.gm_chan = private_channel['id']
@@ -268,21 +230,20 @@ class Driver(object):
                 self.test_private_channel))
 
     def _invite_testbot_to_channel(self):
-        if self.testbot_userid not in self.slacker.channels.info(self.cm_chan).body['channel']['members']:
-            self.slacker.channels.invite(self.cm_chan, self.testbot_userid)
+        info = self.web_client.conversations_info(channel=self.cm_chan)
+        if self.testbot_userid not in info['channel'].get('members', []):
+            self.web_client.conversations_invite(channel=self.cm_chan, users=self.testbot_userid)
 
     def _invite_testbot_to_private_channel(self, private_channel):
-        if self.testbot_userid not in private_channel['members']:
-            self.slacker.groups.invite(self.gm_chan, self.testbot_userid)
+        info = self.web_client.conversations_info(channel=self.gm_chan)
+        if self.testbot_userid not in info['channel'].get('members', []):
+            self.web_client.conversations_invite(channel=self.gm_chan, users=self.testbot_userid)
 
     def _is_bot_message(self, msg):
-        if msg['type'] != 'message':
-            return False
-        if not msg.get('channel', '').startswith('C'):
+        if msg.get('type') != 'message':
             return False
         return msg.get('user') == self.testbot_userid \
             or msg.get('username') == self.testbot_username
 
     def clear_events(self):
-        with self._events_lock:
-            self.events = []
+        self._start_ts = time.time()

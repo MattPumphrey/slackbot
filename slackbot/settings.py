@@ -11,11 +11,17 @@ PLUGINS = [
 ERRORS_TO = None
 
 '''
-Setup timeout for slacker API requests (e.g. uploading a file).
+Setup timeout for slack_sdk WebClient requests (e.g. uploading a file).
 '''
 TIMEOUT = 100
 
+# Bot User OAuth Token (xoxb-...), from "OAuth & Permissions" in your app config.
 # API_TOKEN = '###token###'
+
+# App-Level Token (xapp-...) with the `connections:write` scope, from
+# "Basic Information -> App-Level Tokens". Required for Socket Mode; generate
+# it after enabling Socket Mode for your app.
+# APP_TOKEN = '###app-level-token###'
 
 '''
 Setup a comma delimited list of aliases that the bot will respond to.
@@ -28,12 +34,10 @@ will now also respond to
 ALIASES = ''
 
 '''
-If you use Slack Web API to send messages (with
-send_webapi(text, as_user=False) or reply_webapi(text, as_user=False)),
-you can customize the bot logo by providing Icon or Emoji. If you use Slack
-RTM API to send messages (with send() or reply()), or if as_user is True
-(default), the used icon comes from bot settings and Icon or Emoji has no
-effect.
+If you send messages with as_user=False (e.g. send(text, as_user=False) or
+send_webapi(text, as_user=False)), you can customize the bot logo by
+providing Icon or Emoji. If as_user is True (default), the icon comes from
+the bot's own settings and Icon or Emoji has no effect.
 '''
 # BOT_ICON = 'http://lorempixel.com/64/64/abstract/7/'
 # BOT_EMOJI = ':godmode:'

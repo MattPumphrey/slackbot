@@ -4,10 +4,10 @@ A chat bot for [Slack](https://slack.com) inspired by [llimllib/limbo](https://g
 
 ## Features
 
-* Based on slack [Real Time Messaging API](https://api.slack.com/rtm)
+* Based on Slack's [Socket Mode](https://api.slack.com/apis/connections/socket) and [Events API](https://api.slack.com/apis/connections/events-api), via [`slack_bolt`](https://slack.dev/bolt-python/)
 * Simple plugins mechanism
 * Messages can be handled concurrently
-* Automatically reconnect to slack when connection is lost
+* Automatically reconnects to slack when connection is lost (handled internally by `slack_bolt`)
 * [Full-fledged functional tests](tests/functional/test_functional.py)
 
 ## Installation
@@ -19,28 +19,32 @@ pip install slackbot
 
 ## Usage
 
-### Generate the slack api token
+### Create and configure a Slack app
 
-First you need to get the slack api token for your bot. You have two options:
+This bot connects over Socket Mode, so you need a Slack app with Socket Mode enabled:
 
-1. If you use a [bot user integration](https://api.slack.com/bot-users) of slack, you can get the api token on the integration page.
-2. If you use a real slack user, you can generate an api token on [slack web api page](https://api.slack.com/web).
-
+1. Create a new app at [api.slack.com/apps](https://api.slack.com/apps).
+2. Under **Socket Mode**, enable Socket Mode.
+3. Under **OAuth & Permissions**, add the Bot Token Scopes you need. At minimum: `chat:write`, `channels:read`, `channels:history`, `groups:read`, `groups:history`, `im:read`, `im:history`, `mpim:read`, `mpim:history`, `users:read`, `reactions:write`, `files:write`.
+4. Under **Event Subscriptions**, subscribe to bot events: `message.channels`, `message.groups`, `message.im`, `message.mpim`, `team_join`, `user_change`, `channel_created`, `channel_rename`, `group_joined`, `group_rename`, `im_created`.
+5. Install the app to your workspace, then copy the **Bot User OAuth Token** (`xoxb-...`).
+6. Under **Basic Information → App-Level Tokens**, generate a token with the `connections:write` scope (`xapp-...`).
 
 ### Configure the bot
 First create a `slackbot_settings.py` and a `run.py` in your own instance of slackbot.
 
-##### Configure the api token
+##### Configure the tokens
 
-Then you need to configure the `API_TOKEN` in a python module `slackbot_settings.py`, which must be located in a python import path. This will be automatically imported by the bot.
+Configure `API_TOKEN` (the bot token) and `APP_TOKEN` (the app-level Socket Mode token) in a python module `slackbot_settings.py`, which must be located in a python import path. This will be automatically imported by the bot.
 
 slackbot_settings.py:
 
 ```python
-API_TOKEN = "<your-api-token>"
+API_TOKEN = "<your-bot-token>"      # xoxb-...
+APP_TOKEN = "<your-app-level-token>"  # xapp-...
 ```
 
-Alternatively, you can use the environment variable `SLACKBOT_API_TOKEN`.
+Alternatively, you can use the environment variables `SLACKBOT_API_TOKEN` and `SLACKBOT_APP_TOKEN`.
 
 ##### Run the bot
 

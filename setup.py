@@ -5,9 +5,8 @@ __version__ = open(join(dirname(__file__), 'slackbot/VERSION')).read().strip()
 
 install_requires = (
     'requests>=2.4.0',
-    'websocket-client>=0.22.0,<=0.44.0',
-    'slacker>=0.9.50',
-    'six>=1.10.0'
+    'slack_bolt>=1.18.0',
+    'slack_sdk>=3.27.0',
 ) # yapf: disable
 
 excludes = (
@@ -29,9 +28,9 @@ setup(name='slackbot',
                    'License :: OSI Approved :: MIT License',
                    'Operating System :: OS Independent',
                    'Programming Language :: Python',
-                   'Programming Language :: Python :: 2',
-                   'Programming Language :: Python :: 2.7',
                    'Programming Language :: Python :: 3',
-                   'Programming Language :: Python :: 3.4',
-                   'Programming Language :: Python :: 3.5',
-                   'Programming Language :: Python :: 3.6'])
+                   'Programming Language :: Python :: 3.8',
+                   'Programming Language :: Python :: 3.9',
+                   'Programming Language :: Python :: 3.10',
+                   'Programming Language :: Python :: 3.11',
+                   'Programming Language :: Python :: 3.12'])
