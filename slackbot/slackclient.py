@@ -2,22 +2,27 @@
 
 import os
 import logging
+from copy import deepcopy
 from urllib.parse import urlparse
 
 from slack_sdk import WebClient
+from slack_sdk.http_retry.builtin_handlers import RateLimitErrorRetryHandler
 
 from slackbot.utils import to_utf8
 
 logger = logging.getLogger(__name__)
 
 
-def webapi_generic_list(web_client, method_name, response_key):
+def webapi_generic_list(web_client, method_name, response_key, **kw):
     """Generic <foo>_list request, where <foo> could be users, conversations,
     etc."""
     ret = []
     next_cursor = None
     while True:
-        args = {}
+        args = deepcopy(kw)
+        if method_name == 'conversations_list':
+            # Slack API says max limit is 1000
+            args['limit'] = 800
         if next_cursor:
             args['cursor'] = next_cursor
         response = getattr(web_client, method_name)(**args)
@@ -52,6 +57,7 @@ class SlackClient(object):
             self.web_client = WebClient(token=self.token)
         else:
             self.web_client = WebClient(token=self.token, timeout=timeout)
+        self.web_client.retry_handlers.append(RateLimitErrorRetryHandler(max_retry_count=30))
 
         if connect:
             self.connect()
@@ -59,13 +65,25 @@ class SlackClient(object):
     def connect(self):
         reply = self.web_client.auth_test()
         self.parse_slack_login_data(reply)
+        self.list_users_and_channels()
         self.connected = True
 
     def list_users(self):
         return webapi_generic_list(self.web_client, 'users_list', 'members')
 
     def list_channels(self):
-        return webapi_generic_list(self.web_client, 'conversations_list', 'channels')
+        return webapi_generic_list(
+            self.web_client, 'conversations_list', 'channels',
+            types='public_channel,private_channel,mpim,im')
+
+    def list_users_and_channels(self):
+        logger.info('Loading all users')
+        self.parse_user_data(self.list_users())
+        logger.info('Loaded all users')
+
+        logger.info('Loading all channels')
+        self.parse_channel_data(self.list_channels())
+        logger.info('Loaded all channels')
 
     def parse_slack_login_data(self, auth_data):
         domain = urlparse(auth_data.get('url', '')).hostname or ''
@@ -76,8 +94,6 @@ class SlackClient(object):
         }
         self.domain = domain
         self.username = self.login_data['self']['name']
-        self.parse_user_data(self.list_users())
-        self.parse_channel_data(self.list_channels())
 
     def parse_channel_data(self, channel_data):
         self.channels.update({c['id']: c for c in channel_data})
