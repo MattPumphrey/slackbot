@@ -5,8 +5,8 @@ __version__ = open(join(dirname(__file__), 'slackbot/VERSION')).read().strip()
 
 install_requires = (
     'requests>=2.4.0',
-    'slack_bolt>=1.18.0',
-    'slack_sdk>=3.27.0',
+    'slack_bolt>=1.30.0',
+    'slack_sdk>=3.44.0',
 ) # yapf: disable
 
 excludes = (
